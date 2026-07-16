@@ -93,12 +93,24 @@ docker exec "$MANAGER_CONTAINER" \
 echo "[6/6] Restarting Wazuh manager..."
 
 docker restart "$MANAGER_CONTAINER" >/dev/null
-sleep 15
 
-if ! docker exec "$MANAGER_CONTAINER" \
-    /var/ossec/bin/wazuh-control status \
-    | grep -q "wazuh-analysisd is running"; then
+echo "Waiting for Wazuh manager..."
 
+MANAGER_READY=false
+
+for attempt in $(seq 1 12); do
+    if docker exec "$MANAGER_CONTAINER" \
+        /var/ossec/bin/wazuh-control status 2>/dev/null \
+        | grep -q "wazuh-analysisd is running"; then
+
+        MANAGER_READY=true
+        break
+    fi
+
+    sleep 5
+done
+
+if [ "$MANAGER_READY" != true ]; then
     echo "Wazuh manager failed to restart correctly."
     docker exec "$MANAGER_CONTAINER" \
         tail -50 /var/ossec/logs/ossec.log
