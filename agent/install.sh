@@ -38,7 +38,53 @@ if [ "${EUID}" -ne 0 ]; then
     error "Run this installer as root."
 fi
 
-[ -f "$WAZUH_CONF" ] || error "Wazuh agent configuration not found: $WAZUH_CONF"
+if [ ! -f "$WAZUH_CONF" ]; then
+    log "Wazuh agent is not installed on this host."
+
+    if [ "$NON_INTERACTIVE" = true ]; then
+        INSTALL_AGENT="Y"
+    else
+        read -rp "Install Wazuh Agent now? [Y/n]: " INSTALL_AGENT
+        INSTALL_AGENT="${INSTALL_AGENT:-Y}"
+    fi
+
+    if [[ ! "$INSTALL_AGENT" =~ ^[Yy]$ ]]; then
+        error "Wazuh Agent is required."
+    fi
+
+    if [ -z "$MANAGER_ADDRESS" ]; then
+        read -rp "Wazuh manager address: " MANAGER_ADDRESS
+    fi
+
+    [ -n "$MANAGER_ADDRESS" ] ||
+        error "The manager address cannot be empty."
+
+    log "Installing Wazuh Agent..."
+
+    apt-get update
+    apt-get install -y curl gnupg apt-transport-https
+
+    curl -fsSL https://packages.wazuh.com/key/GPG-KEY-WAZUH \
+        | gpg --dearmor \
+        -o /usr/share/keyrings/wazuh.gpg
+
+    chmod 644 /usr/share/keyrings/wazuh.gpg
+
+    echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" \
+        > /etc/apt/sources.list.d/wazuh.list
+
+    apt-get update
+
+    WAZUH_MANAGER="$MANAGER_ADDRESS" \
+    WAZUH_AGENT_GROUP="$PATCH_GROUP" \
+        apt-get install -y wazuh-agent
+
+    systemctl daemon-reload
+    systemctl enable wazuh-agent
+fi
+
+[ -f "$WAZUH_CONF" ] ||
+    error "Wazuh Agent installation failed: $WAZUH_CONF is missing."
 [ -f "$PATCH_SCRIPT_SOURCE" ] || error "Missing file: $PATCH_SCRIPT_SOURCE"
 [ -f "$EOL_SCRIPT_SOURCE" ] || error "Missing file: $EOL_SCRIPT_SOURCE"
 
