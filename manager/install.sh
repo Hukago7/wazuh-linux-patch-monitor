@@ -137,20 +137,40 @@ echo "[5/6] Restarting Wazuh manager..."
 docker restart "$MANAGER_CONTAINER" >/dev/null
 
 echo "[Manager] Waiting for Wazuh manager..."
-sleep 15
+
+MANAGER_READY=false
+
+for attempt in $(seq 1 18); do
+    if docker exec "$MANAGER_CONTAINER" \
+        /var/ossec/bin/wazuh-control status 2>/dev/null \
+        | grep -q '^wazuh-analysisd is running'; then
+
+        MANAGER_READY=true
+        break
+    fi
+
+    printf "."
+    sleep 5
+done
+
+echo
 
 echo "[6/6] Checking manager status..."
 
-if docker exec "$MANAGER_CONTAINER" \
-    /var/ossec/bin/wazuh-control status \
-    | grep -q "wazuh-analysisd is running"; then
-
+if [ "$MANAGER_READY" = true ]; then
     echo "[Manager] wazuh-analysisd is running."
 else
-    echo "[Manager] wazuh-analysisd is not running."
+    echo "[Manager] Wazuh manager did not become ready within 90 seconds."
     echo
+
     docker exec "$MANAGER_CONTAINER" \
-        tail -50 /var/ossec/logs/ossec.log
+        /var/ossec/bin/wazuh-control status || true
+
+    echo
+
+    docker exec "$MANAGER_CONTAINER" \
+        tail -80 /var/ossec/logs/ossec.log || true
+
     exit 1
 fi
 
