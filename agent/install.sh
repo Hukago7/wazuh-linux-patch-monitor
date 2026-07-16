@@ -128,7 +128,7 @@ if [ -s "$CLIENT_KEYS" ]; then
 fi
 
 if [ "$AGENT_ENROLLED" = false ]; then
-    log "[4/7] Preparing enrollment in group '${PATCH_GROUP}'..."
+    log "[4/7] Enrolling agent in group '${PATCH_GROUP}'..."
 
     if [ -z "$MANAGER_ADDRESS" ]; then
         if [ "$NON_INTERACTIVE" = true ]; then
@@ -138,68 +138,15 @@ if [ "$AGENT_ENROLLED" = false ]; then
         read -rp "Wazuh manager address: " MANAGER_ADDRESS
     fi
 
-    [ -n "$MANAGER_ADDRESS" ] \
-        || error "The manager address cannot be empty."
-
-    BACKUP="${WAZUH_CONF}.bak.$(date +%Y%m%d%H%M%S)"
-    cp "$WAZUH_CONF" "$BACKUP"
-
-    python3 - "$WAZUH_CONF" "$MANAGER_ADDRESS" "$PATCH_GROUP" <<'PY'
-import sys
-import xml.etree.ElementTree as ET
-
-path = sys.argv[1]
-manager = sys.argv[2]
-group = sys.argv[3]
-
-tree = ET.parse(path)
-root = tree.getroot()
-
-client = root.find("client")
-if client is None:
-    client = ET.SubElement(root, "client")
-
-server = client.find("server")
-if server is None:
-    server = ET.SubElement(client, "server")
-
-address = server.find("address")
-if address is None:
-    address = ET.SubElement(server, "address")
-address.text = manager
-
-enrollment = client.find("enrollment")
-if enrollment is None:
-    enrollment = ET.SubElement(client, "enrollment")
-
-groups = enrollment.find("groups")
-if groups is None:
-    groups = ET.SubElement(enrollment, "groups")
-groups.text = group
-
-ET.indent(tree, space="  ")
-tree.write(path, encoding="unicode")
-PY
-
-    log "Enrollment configuration updated."
-    log "Backup created: $BACKUP"
+    [ -n "$MANAGER_ADDRESS" ] ||
+        error "The manager address cannot be empty."
 
     if [ -x "${WAZUH_DIR}/bin/agent-auth" ]; then
-      if [ "$NON_INTERACTIVE" = true ]; then
-          if [ -n "$API_HOST" ] && [ -n "$API_USER" ]; then
-              ASSIGN_API="Y"
-          else
-              ASSIGN_API="N"
-              log "API credentials not provided: automatic group assignment skipped."
-          fi
-      else
-    read -rp "Assign this existing agent through the API? [Y/n]: " ASSIGN_API
-    ASSIGN_API="${ASSIGN_API:-Y}"
-fi
-
-        if [[ "$ANSWER" =~ ^[Yy]$ ]]; then
-            "${WAZUH_DIR}/bin/agent-auth" -m "$MANAGER_ADDRESS"
-        fi
+        "${WAZUH_DIR}/bin/agent-auth" \
+            -m "$MANAGER_ADDRESS" \
+            -G "$PATCH_GROUP"
+    else
+        error "agent-auth not found."
     fi
 else
     log "[4/7] Agent already enrolled."
