@@ -145,6 +145,9 @@ if [ "$AGENT_ENROLLED" = false ]; then
         "${WAZUH_DIR}/bin/agent-auth" \
             -m "$MANAGER_ADDRESS" \
             -G "$PATCH_GROUP"
+        if [ -s "$CLIENT_KEYS" ]; then
+            AGENT_ID="$(awk 'NF >= 4 && $1 != "000" {print $1; exit}' "$CLIENT_KEYS")"
+        fi
     else
         error "agent-auth not found."
     fi
