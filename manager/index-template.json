@@ -1,0 +1,71 @@
+{
+    "index_patterns": [
+      "wazuh-alerts-4.x-*"
+    ],
+    "priority": 500,
+    "template": {
+      "mappings": {
+        "properties": {
+          "data": {
+            "properties": {
+              "total_updates": {
+                "type": "integer"
+              },
+              "security_updates": {
+                "type": "integer"
+              },
+              "last_check": {
+                "type": "date",
+                "format": "HH:mm:ss dd/MM/yyyy"
+              },
+              "hostname": {
+                "type": "keyword"
+              },
+              "os_id": {
+                "type": "keyword"
+              },
+              "os_name": {
+                "type": "keyword"
+              },
+              "os_version": {
+                "type": "keyword"
+              },
+              "os_pretty": {
+                "type": "keyword"
+              },
+              "os_lifecycle": {
+                "type": "keyword"
+              },
+              "os_lifecycle_display": {
+                "type": "keyword"
+              },
+              "os_eol": {
+                "type": "keyword"
+              },
+              "os_extended_eol": {
+                "type": "keyword"
+              },
+              "kernel": {
+                "type": "keyword"
+              },
+              "patch_state": {
+                "type": "keyword"
+              },
+              "patch_state_display": {
+                "type": "keyword"
+              },
+              "reboot_required": {
+                "type": "keyword"
+              },
+              "reboot_required_display": {
+                "type": "keyword"
+              },
+              "severity": {
+                "type": "keyword"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
