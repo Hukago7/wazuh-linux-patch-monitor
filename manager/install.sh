@@ -16,6 +16,11 @@ AGENT_GROUP="linux-patch"
 AGENT_CONF_SOURCE="manager/agent.conf"
 AGENT_CONF_DEST="/var/ossec/etc/shared/${AGENT_GROUP}/agent.conf"
 
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+DASHBOARD_CONTAINER="${DASHBOARD_CONTAINER:-single-node-wazuh.dashboard-1}"
+DASHBOARD_NDJSON="${PROJECT_DIR}/manager/dashboard.ndjson"
+
 echo "[Manager] Installing Wazuh Linux Patch Monitor..."
 
 if [ "${EUID}" -ne 0 ]; then
@@ -39,7 +44,7 @@ if [ ! -f "$RULE_SOURCE" ]; then
     exit 1
 fi
 
-echo "[1/6] Installing custom rules..."
+echo "[1/7] Installing custom rules..."
 
 if docker exec "$MANAGER_CONTAINER" test -f "$RULE_DEST"; then
     BACKUP="${RULE_DEST}.bak.$(date +%Y%m%d%H%M%S)"
@@ -55,7 +60,7 @@ docker cp \
     "$RULE_SOURCE" \
     "$MANAGER_CONTAINER:$RULE_DEST"
 
-echo "[2/6] Validating Wazuh rules..."
+echo "[2/7] Validating Wazuh rules..."
 
 if ! docker exec "$MANAGER_CONTAINER" \
     /var/ossec/bin/wazuh-analysisd -t; then
@@ -64,7 +69,7 @@ if ! docker exec "$MANAGER_CONTAINER" \
     exit 1
 fi
 
-echo "[3/6] Configuring centralized agent configuration..."
+echo "[3/7] Configuring centralized agent configuration..."
 
 if ! docker exec "$MANAGER_CONTAINER" \
     /var/ossec/bin/agent_groups -l \
@@ -98,7 +103,7 @@ fi
 
 echo "[Manager] Centralized configuration installed."
 
-echo "[4/6] Installing OpenSearch index template..."
+echo "[4/7] Installing OpenSearch index template..."
 
 if docker ps --format '{{.Names}}' | grep -qx "$INDEXER_CONTAINER" \
    && [ -f "$INDEX_TEMPLATE" ]; then
@@ -127,12 +132,101 @@ if docker ps --format '{{.Names}}' | grep -qx "$INDEXER_CONTAINER" \
     rm -f /tmp/linux_patch_template_response.json
 
     echo "[Manager] Index template installed."
+    CURRENT_INDEX="wazuh-alerts-4.x-$(date +%Y.%m.%d)"
+
+    HTTP_CODE="$(
+        curl -ksS \
+            -o /dev/null \
+            -w '%{http_code}' \
+            -u "admin:${OPENSEARCH_PASS}" \
+            "https://localhost:9200/${CURRENT_INDEX}"
+    )"
+
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo
+        echo "[Manager] WARNING: ${CURRENT_INDEX} already exists."
+        echo "[Manager] The new mapping will apply only to future indices."
+        echo "[Manager] Existing field types cannot be changed in place."
+    fi
 else
     echo "[Manager] Indexer not detected or template missing."
     echo "[Manager] Skipping index template."
 fi
 
-echo "[5/6] Restarting Wazuh manager..."
+echo "[5/7] Importing OpenSearch dashboard..."
+
+IMPORT_DASHBOARD="Y"
+
+if [ "${PATCH_NON_INTERACTIVE:-false}" != "true" ]; then
+    read -rp "Import the Linux Patch dashboard now? [Y/n]: " IMPORT_DASHBOARD
+    IMPORT_DASHBOARD="${IMPORT_DASHBOARD:-Y}"
+fi
+
+if [[ "$IMPORT_DASHBOARD" =~ ^[Yy]$ ]]; then
+    if [ ! -f "$DASHBOARD_NDJSON" ]; then
+        echo "[Manager] Dashboard file not found: $DASHBOARD_NDJSON"
+        exit 1
+    fi
+
+    read -rp "Wazuh Dashboard URL [https://wazuh.yourdomain.net]: " DASHBOARD_URL
+    DASHBOARD_URL="${DASHBOARD_URL:-https://localhost}"
+
+    read -rp "Dashboard username [admin]: " DASHBOARD_USER
+    DASHBOARD_USER="${DASHBOARD_USER:-admin}"
+
+    read -rsp "Dashboard password: " DASHBOARD_PASSWORD
+    echo
+
+    DASHBOARD_HTTP_CODE="$(
+        curl -ksS \
+            -o /tmp/linux_patch_dashboard_import.json \
+            -w '%{http_code}' \
+            -u "${DASHBOARD_USER}:${DASHBOARD_PASSWORD}" \
+            -H "osd-xsrf: true" \
+            -F "file=@${DASHBOARD_NDJSON};type=application/ndjson" \
+            "${DASHBOARD_URL}/api/saved_objects/_import?overwrite=true"
+    )"
+
+    if [ "$DASHBOARD_HTTP_CODE" -lt 200 ] ||
+       [ "$DASHBOARD_HTTP_CODE" -ge 300 ]; then
+
+        echo "[Manager] Dashboard import failed."
+        echo "[Manager] HTTP status: $DASHBOARD_HTTP_CODE"
+        cat /tmp/linux_patch_dashboard_import.json
+        rm -f /tmp/linux_patch_dashboard_import.json
+        exit 1
+    fi
+
+    if command -v jq >/dev/null 2>&1; then
+        IMPORT_SUCCESS="$(
+            jq -r '.success // false' \
+                /tmp/linux_patch_dashboard_import.json
+        )"
+
+        IMPORT_ERRORS="$(
+            jq -r '.errors | length // 0' \
+                /tmp/linux_patch_dashboard_import.json
+        )"
+
+        if [ "$IMPORT_SUCCESS" != "true" ] ||
+           [ "$IMPORT_ERRORS" != "0" ]; then
+
+            echo "[Manager] Dashboard API returned import errors."
+            jq . /tmp/linux_patch_dashboard_import.json
+            rm -f /tmp/linux_patch_dashboard_import.json
+            exit 1
+        fi
+    else
+        cat /tmp/linux_patch_dashboard_import.json
+    fi
+
+    rm -f /tmp/linux_patch_dashboard_import.json
+    echo "[Manager] Dashboard imported successfully."
+else
+    echo "[Manager] Dashboard import skipped."
+fi
+
+echo "[6/7] Restarting Wazuh manager..."
 
 docker restart "$MANAGER_CONTAINER" >/dev/null
 
@@ -155,7 +249,7 @@ done
 
 echo
 
-echo "[6/6] Checking manager status..."
+echo "[7/7] Checking manager status..."
 
 if [ "$MANAGER_READY" = true ]; then
     echo "[Manager] wazuh-analysisd is running."
