@@ -1,0 +1,31 @@
+<group name="linux_updates,patch_management,">
+
+  <rule id="100500" level="2">
+    <decoded_as>json</decoded_as>
+    <field name="integration">^linux_updates$</field>
+    <field name="patch_state">^COMPLIANT$</field>
+    <description>Linux host $(hostname) is compliant and fully up to date.</description>
+  </rule>
+
+  <rule id="100501" level="6">
+    <decoded_as>json</decoded_as>
+    <field name="integration">^linux_updates$</field>
+    <field name="patch_state">^UPDATES_AVAILABLE$</field>
+    <description>Linux host $(hostname) has pending updates.</description>
+  </rule>
+
+  <rule id="100502" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="integration">^linux_updates$</field>
+    <field name="patch_state">^SECURITY_UPDATES$</field>
+    <description>Linux host $(hostname) has security updates available.</description>
+  </rule>
+
+  <rule id="100503" level="9">
+    <decoded_as>json</decoded_as>
+    <field name="integration">^linux_updates$</field>
+    <field name="patch_state">^REBOOT_REQUIRED$</field>
+    <description>Linux host $(hostname) requires a reboot.</description>
+  </rule>
+
+</group>
